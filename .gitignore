@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.log
+
+# Local task-manager data
+utilities/tasks.json
+
+# Generated TLS material (never commit private keys)
+network-lab/server.key
+network-lab/server.crt
+server.key
+server.crt
