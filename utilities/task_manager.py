@@ -17,25 +17,51 @@ class TaskManager:
     """Хранит задачи и управляет ими."""
 
     def __init__(self):
+        self.load_error = None
         self.tasks = self.load_tasks()
 
     def load_tasks(self):
-        """Загружает задачи из JSON."""
-        if os.path.exists(TASKS_FILE):
-            try:
-                with open(TASKS_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                return []
-        return []
+        """Загружает задачи из JSON, не скрывая повреждение файла."""
+        if not os.path.exists(TASKS_FILE):
+            return []
+
+        try:
+            with open(TASKS_FILE, "r", encoding="utf-8") as f:
+                tasks = json.load(f)
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
+            self.load_error = (
+                f"Не удалось прочитать файл задач: {error}. "
+                "Исходный файл сохранён без изменений."
+            )
+            return []
+
+        if not isinstance(tasks, list) or any(not isinstance(task, dict) for task in tasks):
+            self.load_error = (
+                "Файл задач содержит данные неожиданного формата. "
+                "Исходный файл сохранён без изменений."
+            )
+            return []
+
+        return tasks
 
     def save_tasks(self):
-        """Сохраняет задачи в JSON."""
+        """Сохраняет задачи, не перезаписывая файл при ошибке загрузки."""
+        if self.load_error:
+            messagebox.showerror(
+                "Сохранение заблокировано",
+                "Файл задач не был загружен корректно, поэтому сохранение "
+                "отключено, чтобы не потерять данные. Исправь utilities/tasks.json "
+                "и перезапусти менеджер.\n\n" + self.load_error,
+            )
+            return False
+
         try:
             with open(TASKS_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.tasks, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            messagebox.showerror("Ошибка сохранения", str(e))
+            return True
+        except OSError as error:
+            messagebox.showerror("Ошибка сохранения", str(error))
+            return False
 
     def add_task(self, title, description="", priority="Обычный"):
         """Добавляет новую задачу."""
@@ -78,6 +104,12 @@ class TaskManagerApp:
         self.root.geometry("900x600")
 
         self.manager = TaskManager()
+        if self.manager.load_error:
+            messagebox.showwarning(
+                "Проблема с файлом задач",
+                self.manager.load_error + "\n\n"
+                "Существующий файл не будет перезаписан.",
+            )
 
         # --- Заголовок и кнопки ---
         top_frame = tk.Frame(root, pady=10)
