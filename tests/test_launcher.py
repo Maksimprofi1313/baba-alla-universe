@@ -30,5 +30,41 @@ class DiscoverGamesTests(unittest.TestCase):
                 self.assertEqual(launcher.discover_games(), [])
 
 
+class TaskManagerStorageTests(unittest.TestCase):
+    def test_corrupt_json_is_preserved_and_saving_is_blocked(self):
+        import json
+        from utilities import task_manager
+
+        with tempfile.TemporaryDirectory() as directory:
+            storage = Path(directory) / "tasks.json"
+            original = "{ this is not valid JSON"
+            storage.write_text(original, encoding="utf-8")
+
+            with patch.object(task_manager, "TASKS_FILE", str(storage)):
+                manager = task_manager.TaskManager()
+                self.assertEqual(manager.tasks, [])
+                self.assertIsNotNone(manager.load_error)
+                with patch.object(task_manager.messagebox, "showerror"):
+                    self.assertFalse(manager.save_tasks())
+
+            self.assertEqual(storage.read_text(encoding="utf-8"), original)
+
+    def test_valid_json_tasks_are_loaded(self):
+        from utilities import task_manager
+
+        expected = [{"id": "1", "title": "Проверка", "status": "todo"}]
+        with tempfile.TemporaryDirectory() as directory:
+            storage = Path(directory) / "tasks.json"
+            storage.write_text(
+                __import__("json").dumps(expected, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            with patch.object(task_manager, "TASKS_FILE", str(storage)):
+                manager = task_manager.TaskManager()
+
+        self.assertEqual(manager.tasks, expected)
+        self.assertIsNone(manager.load_error)
+
+
 if __name__ == "__main__":
     unittest.main()
