@@ -156,7 +156,6 @@ class NightShift:
             return
         if not self.spend(1):
             return
-        self.met_alla = True
         say(
             "Дверь магазина открывается. На пороге стоит Баба Алла с термосом. "
             "Она смотрит на радио и говорит: «Ну наконец-то. Я думала, ты его "
@@ -170,6 +169,7 @@ class NightShift:
         if answer == 0:
             if "Маршрут № 0" in self.clues:
                 self.clues.add("История маршрута")
+                self.met_alla = True
                 say("Алла рассказывает: маршрут № 0 возил людей к старому вокзалу, которого уже нет.")
                 self.reputation += 2
             else:
@@ -179,15 +179,59 @@ class NightShift:
                 say("Алла довольно кивает и оставляет тебе 10 ₽ на кассе.")
                 self.cash += 10
                 self.reputation += 1
+                self.met_alla = True
             else:
                 say("«Чай без чая — это просто горячая надежда», — вздыхает Алла.")
         else:
             if self.use_item("Старая монета"):
                 self.clues.add("Знак старого вокзала")
+                self.met_alla = True
                 say("Алла узнаёт знак на монете. «Вот теперь разговор серьёзный».")
                 self.reputation += 2
             else:
                 say("«Будут улики — приходи», — говорит Алла.")
+
+    def investigate_station(self) -> None:
+        """Исследует старый вокзал, если его местоположение уже известно."""
+        if not {"История маршрута", "Знак старого вокзала"}.issubset(self.clues):
+            say("Ты пока не знаешь, где искать старый вокзал и как его узнать.")
+            return
+        if not self.spend(2):
+            return
+        say(
+            "За заросшим пустырём обнаруживается платформа старого вокзала. "
+            "Табло давно погасло, но на стене сохранилась схема маршрутов."
+        )
+        choice = choose("Что осмотреть на платформе?", [
+            "Заглянуть в будку диспетчера",
+            "Осмотреть скамью под табло",
+            "Сверить схему с найденной монетой",
+        ])
+        if choice == 0:
+            if "Запись диспетчера" not in self.clues:
+                self.clues.add("Запись диспетчера")
+                self.add_item("Ключ диспетчерской")
+                say(
+                    "В журнале осталась запись: «Последний рейс не отменён. "
+                    "Он просто ждёт, когда его вспомнят»."
+                )
+            else:
+                say("В журнале больше нет новых записей.")
+        elif choice == 1:
+            if "Старый билет" not in self.clues:
+                self.clues.add("Старый билет")
+                say("Под скамьёй лежит билет на маршрут № 0. На обороте — дата завтрашней ночи.")
+            else:
+                say("Ты уже забрал билет. Под скамьёй только пыль.")
+        else:
+            if self.use_item("Старая монета"):
+                self.clues.add("Схема вокзала")
+                self.reputation += 1
+                say("Монета точно совпадает с эмблемой на схеме. Теперь понятно, куда вёл нулевой маршрут.")
+            elif "Схема вокзала" in self.clues:
+                say("Схему ты уже сверил. Эмблема совпадает.")
+            else:
+                say("Без монеты эмблему на схеме не проверить.")
 
     def random_event(self) -> None:
         event = random.choice([
@@ -240,24 +284,22 @@ class NightShift:
         while self.day <= 4:
             self.status()
             say(f"Ночь {self.day}. До рассвета ещё есть время.")
-            action = choose("Куда направишься?", [
-                "Исследовать автобусную остановку (2 энергии)",
-                "Зайти в магазин за припасами",
-                "Починить радио (2 энергии)",
-                "Поговорить с Бабой Аллой (1 энергия)",
-                "Сделать перерыв и закончить смену",
-            ])
-            if action == 0:
-                self.investigate_stop()
-            elif action == 1:
-                self.shop()
-            elif action == 2:
-                self.repair_radio()
-            elif action == 3:
-                self.meet_alla()
-            else:
+            actions = [
+                ("Исследовать автобусную остановку (2 энергии)", self.investigate_stop),
+                ("Зайти в магазин за припасами", self.shop),
+                ("Починить радио (2 энергии)", self.repair_radio),
+                ("Поговорить с Бабой Аллой (1 энергия)", self.meet_alla),
+            ]
+            if {"История маршрута", "Знак старого вокзала"}.issubset(self.clues):
+                actions.append(("Отправиться к старому вокзалу (2 энергии)", self.investigate_station))
+            actions.append(("Сделать перерыв и закончить смену", None))
+
+            action = choose("Куда направишься?", [label for label, _ in actions])
+            selected_action = actions[action][1]
+            if selected_action is None:
                 self.end_shift()
                 continue
+            selected_action()
             if self.day <= 4 and random.random() < 0.25:
                 self.random_event()
             if self.energy == 0:
