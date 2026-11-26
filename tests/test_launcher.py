@@ -66,5 +66,43 @@ class TaskManagerStorageTests(unittest.TestCase):
         self.assertIsNone(manager.load_error)
 
 
+class TaskManagerBehaviorTests(unittest.TestCase):
+    def setUp(self):
+        from utilities import task_manager
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.storage = Path(self.temp_dir.name) / "tasks.json"
+        self.patch_storage = patch.object(task_manager, "TASKS_FILE", str(self.storage))
+        self.patch_storage.start()
+        self.addCleanup(self.patch_storage.stop)
+        self.addCleanup(self.temp_dir.cleanup)
+        self.manager = task_manager.TaskManager()
+
+    def test_add_update_delete_and_filter_tasks(self):
+        first = self.manager.add_task("Первая задача")
+        second = self.manager.add_task("Вторая задача")
+
+        self.assertEqual(len(self.manager.tasks), 2)
+        self.assertEqual(first["status"], "todo")
+        self.assertEqual(len(self.manager.get_by_status("todo")), 2)
+
+        self.manager.update_task(first["id"], status="done", title="Готово")
+        self.assertEqual(self.manager.tasks[0]["title"], "Готово")
+        self.assertEqual(len(self.manager.get_by_status("done")), 1)
+
+        self.manager.delete_task(second["id"])
+        self.assertEqual([task["id"] for task in self.manager.tasks], [first["id"]])
+
+        import json
+        saved = json.loads(self.storage.read_text(encoding="utf-8"))
+        self.assertEqual(saved, self.manager.tasks)
+
+    def test_save_failure_does_not_report_success(self):
+        from utilities import task_manager
+        self.manager.tasks = [{"id": "1", "title": "Проверка", "status": "todo"}]
+        with patch.object(task_manager.messagebox, "showerror"):
+            with patch("builtins.open", side_effect=OSError("disk unavailable")):
+                self.assertFalse(self.manager.save_tasks())
+
+
 if __name__ == "__main__":
     unittest.main()
