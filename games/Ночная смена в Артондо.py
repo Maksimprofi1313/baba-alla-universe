@@ -42,6 +42,8 @@ class NightShift:
         self.inventory = {"Батарейки": 1, "Изолента": 1}
         self.radio_fixed = False
         self.met_alla = False
+        self.route_completed = False
+        self.route_choice = None
         self.running = True
 
     def status(self) -> None:
@@ -233,6 +235,30 @@ class NightShift:
             else:
                 say("Без монеты эмблему на схеме не проверить.")
 
+    def wait_for_route_zero(self) -> None:
+        """Финальная сцена: последний автобус появляется в 03:17."""
+        if not {"Старый билет", "Три коротких сигнала"}.issubset(self.clues):
+            say("Пока не хватает билета и трёх сигналов радио.")
+            return
+        if not self.spend(1):
+            return
+        line("═")
+        say("03:16. На пустой платформе гаснет фонарь. Радио щёлкает три раза. На старом табло загорается цифра 0.")
+        say("Из тумана выплывает автобус. Двери открываются, водитель спрашивает: «До конечной? Билет сохранился?»")
+        choice = choose("Что ты сделаешь?", [
+            "Показать старый билет и войти",
+            "Спросить водителя, кто ждёт на конечной",
+            "Остаться на платформе и записать номер автобуса",
+        ])
+        self.route_completed = True
+        self.route_choice = ["passenger", "question", "witness"][choice]
+        if choice == 0:
+            say("Водитель пробивает билет. На нём проступает надпись: «Для тех, кто помнит». Ты входишь, и за окнами появляются улицы, которых давно нет на карте.")
+        elif choice == 1:
+            say("«Те, кто однажды не успел домой», — отвечает водитель. На последнем сиденье лежит знакомый термос Бабы Аллы. Автобус растворяется в тумане.")
+        else:
+            self.clues.add("Номер последнего рейса")
+            say("Ты остаёшься на платформе. Автобус уезжает без звука. Теперь у тебя есть доказательство: маршрут № 0 существует.")
     def random_event(self) -> None:
         event = random.choice([
             ("Пёс у двери", "К магазину прибился пёс. Ты делишься булочкой, и он приносит тебе потерянные 5 ₽.", "Булочка"),
@@ -256,7 +282,16 @@ class NightShift:
     def ending(self) -> None:
         line("═")
         say("РАССВЕТ НАД АРТОНДО")
-        if len(self.clues) >= 4 and self.reputation >= 3 and self.radio_fixed:
+        if self.route_completed and self.route_choice == "passenger":
+            say("Ты доехал до старого вокзала. Там горит свет, а на стене висит фотография последнего рейса — на ней ты вместе с Бабой Аллой. Утром ты возвращаешься в Артондо с билетом, на котором появилась новая дата.")
+            result = "ПАССАЖИР НУЛЕВОГО МАРШРУТА"
+        elif self.route_completed and self.route_choice == "question":
+            say("Ты так и не узнал, кто едет на конечную. Баба Алла обещает рассказать остальное, когда придёт время.")
+            result = "ВОПРОС БЕЗ ОТВЕТА"
+        elif self.route_completed and self.route_choice == "witness":
+            say("Ты сохранил доказательство последнего рейса. Иногда важно не уехать, а убедиться, что город не забыл свою историю.")
+            result = "СВИДЕТЕЛЬ ПОСЛЕДНЕГО РЕЙСА"
+        elif len(self.clues) >= 4 and self.reputation >= 3 and self.radio_fixed:
             say(
                 "На четвёртую ночь радио ловит старую запись: оказывается, маршрут № 0 "
                 "был последним рейсом до закрытия вокзала. Баба Алла приходит к рассвету "
@@ -292,6 +327,8 @@ class NightShift:
             ]
             if {"История маршрута", "Знак старого вокзала"}.issubset(self.clues):
                 actions.append(("Отправиться к старому вокзалу (2 энергии)", self.investigate_station))
+            if self.day == 4 and {"Старый билет", "Три коротких сигнала"}.issubset(self.clues):
+                actions.append(("Дождаться автобуса маршрута № 0 (1 энергия)", self.wait_for_route_zero))
             actions.append(("Сделать перерыв и закончить смену", None))
 
             action = choose("Куда направишься?", [label for label, _ in actions])
